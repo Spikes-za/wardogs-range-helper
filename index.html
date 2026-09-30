@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fire Mission: mortar and artillery range calculator for War Dogs</title>
+<meta name="description" content="Free fan-made range calculator for War Dogs. Paste your mortar and target coordinates to get the exact distance for mortars and artillery.">
+<style>
+  :root { --bg:#1f2419; --panel:#2b3223; --ink:#e8e6d5; --muted:#a3a98f; --accent:#e0b24a; --line:#444d38; --bad:#e07a5f; --ok:#8fbf7a; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:1rem; background:var(--bg); color:var(--ink); font-family:Georgia,"Times New Roman",serif; line-height:1.5; }
+  main { max-width:32rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .25rem; }
+  p.note { color:var(--muted); margin:0 0 1rem; font-size:.95rem; }
+  fieldset { border:1px solid var(--line); background:var(--panel); padding:.75rem 1rem 1rem; margin:0 0 1rem; border-radius:4px; }
+  legend { padding:0 .4rem; color:var(--accent); }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+  label { display:block; font-size:.9rem; color:var(--muted); }
+  input { width:100%; margin-top:.2rem; padding:.55rem; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:3px; font:inherit; font-size:1.05rem; }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .paste { margin-bottom:.75rem; }
+  .parsed { color:var(--muted); font-size:.85rem; margin:.25rem 0 0; min-height:1.3em; }
+  #result { border:2px solid var(--accent); border-radius:4px; padding:1rem; }
+  #result .big { font-size:2.6rem; line-height:1.1; }
+  #result .big small { font-size:1rem; color:var(--muted); }
+  .status { margin:.5rem 0 0; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  #maths { color:var(--muted); font-size:.9rem; margin:.75rem 0 0; }
+  button { font:inherit; padding:.4rem .8rem; background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:3px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fire Mission</h1>
+  <p class="note" style="font-size:1.05rem;color:var(--ink)">Mortar and artillery range calculator for War Dogs</p>
+  <p class="note">In game: right-click the map, choose Mark coordinates, then copy the chat text. Paste it below, or type the numbers in.</p>
+
+  <fieldset>
+    <legend>A: your mortar</legend>
+    <div class="paste">
+      <label>Paste coordinates<input id="pa" type="text" placeholder="Paste the marked coordinates here" autocomplete="off"></label>
+      <p class="parsed" id="pa-out"></p>
+    </div>
+    <div class="row">
+      <label>X<input id="ax" type="number" step="any" inputmode="decimal" value="94.53"></label>
+      <label>Y<input id="ay" type="number" step="any" inputmode="decimal" value="109.03"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>B: target</legend>
+    <div class="paste">
+      <label>Paste coordinates<input id="pb" type="text" placeholder="Paste the marked coordinates here" autocomplete="off"></label>
+      <p class="parsed" id="pb-out"></p>
+    </div>
+    <div class="row">
+      <label>X<input id="bx" type="number" step="any" inputmode="decimal" value="98.43"></label>
+      <label>Y<input id="by" type="number" step="any" inputmode="decimal" value="110.38"></label>
+    </div>
+  </fieldset>
+
+  <div id="result" aria-live="polite"></div>
+
+  <p style="margin-top:1rem"><button id="swap" type="button">Swap A and B</button></p>
+  <p class="note">Set the range on the mortar's RNG scale, then middle-click the map to drop a marker and turn the mortar to face it.</p>
+  <p class="note" style="margin-top:1.5rem">Fire Mission is a fan-made tool and is not affiliated with or endorsed by the makers of War Dogs.</p>
+</main>
+
+<script>
+  // Coordinates are in units of 100 m: the video's example difference of 4.12 = 412 m.
+  const METRES_PER_UNIT = 100;
+  // Approximate weapon limits quoted in the video. Edit if they differ in your game version.
+  const MORTAR_MAX = 700;
+  const ARTILLERY_MIN = 750, ARTILLERY_MAX = 2630;
+
+  const $ = id => document.getElementById(id);
+
+  // Pulls the first two numbers out of pasted text, e.g. "... 98.43, 110.38"
+  function parsePaste(text) {
+    const nums = text.match(/-?\d+(?:\.\d+)?/g);
+    return nums && nums.length >= 2 ? [parseFloat(nums[0]), parseFloat(nums[1])] : null;
+  }
+
+  function hookPaste(inputId, outId, xId, yId) {
+    $(inputId).addEventListener("input", () => {
+      const p = parsePaste($(inputId).value);
+      if (p) {
+        $(xId).value = p[0]; $(yId).value = p[1];
+        $(outId).textContent = `Read X = ${p[0]}, Y = ${p[1]}. Check these match the game.`;
+        calc();
+      } else {
+        $(outId).textContent = $(inputId).value ? "Could not find two numbers. Type them in below." : "";
+      }
+    });
+  }
+
+  function calc() {
+    const ax = parseFloat($("ax").value), ay = parseFloat($("ay").value);
+    const bx = parseFloat($("bx").value), by = parseFloat($("by").value);
+    const out = $("result");
+    if ([ax, ay, bx, by].some(isNaN)) { out.textContent = "Enter both sets of coordinates to get the range."; return; }
+
+    const dx = bx - ax, dy = by - ay;
+    const a2 = dx * dx, b2 = dy * dy;
+    const c2 = a2 + b2;
+    const c = Math.sqrt(c2);
+    const metres = c * METRES_PER_UNIT;
+
+    let status;
+    if (metres <= MORTAR_MAX) status = `<span class="ok">In mortar range.</span> Artillery can't fire this close (minimum about ${ARTILLERY_MIN} m).`;
+    else if (metres >= ARTILLERY_MIN && metres <= ARTILLERY_MAX) status = `<span class="bad">Too far for a mortar</span> (about ${MORTAR_MAX} m max). <span class="ok">In artillery range.</span>`;
+    else if (metres > ARTILLERY_MAX) status = `<span class="bad">Out of range for both</span> (artillery reaches about ${ARTILLERY_MAX} m).`;
+    else status = `<span class="bad">Too far for a mortar</span> and too close for artillery.`;
+
+    out.innerHTML = `
+      <div class="big">${Math.round(metres)} <small>m: set RNG to this</small></div>
+      <p class="status">${status}</p>
+      <p id="maths">
+        a = ${bx} − ${ax} = ${dx.toFixed(2)} → a² = ${a2.toFixed(2)}<br>
+        b = ${by} − ${ay} = ${dy.toFixed(2)} → b² = ${b2.toFixed(2)}<br>
+        c² = ${c2.toFixed(2)} → c = ${c.toFixed(3)} → ${metres.toFixed(1)} m
+      </p>`;
+  }
+
+  hookPaste("pa", "pa-out", "ax", "ay");
+  hookPaste("pb", "pb-out", "bx", "by");
+  ["ax", "ay", "bx", "by"].forEach(id => $(id).addEventListener("input", calc));
+  $("swap").addEventListener("click", () => {
+    [["ax","bx"],["ay","by"]].forEach(([p, q]) => { const t = $(p).value; $(p).value = $(q).value; $(q).value = t; });
+    calc();
+  });
+  calc();
+</script>
+</body>
+</html>
