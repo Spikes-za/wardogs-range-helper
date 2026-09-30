@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://wardogs-range-helper.spikesprojects.workers.dev/sitemap.xml
